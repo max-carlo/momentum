@@ -9,19 +9,19 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
 
 def get_driver():
-    """
-    Erzeugt einen Headless-Chrome-WebDriver mit Pfaden,
-    wie sie auf (z.B.) Streamlit Cloud via packages.txt üblich sind.
-    Passen Sie Pfade ggf. an Ihren Server an.
-    """
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--headless")
-    chrome_options.binary_location = "/usr/bin/chromium-browser"
-    driver = webdriver.Chrome("/usr/bin/chromedriver", options=chrome_options)
+
+    driver = webdriver.Chrome(
+        executable_path=ChromeDriverManager().install(),
+        options=chrome_options
+    )
     return driver
 
 def scrape_earnings_whispers(ticker: str):
