@@ -1,73 +1,53 @@
-import streamlit as st
-import time
-import subprocess
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.core.utils import ChromeType
 
-
-# Konfiguriere den WebDriver (Chrome/Chromium)
-def get_driver():
+def get_earnings_data(ticker):
     chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--headless")
-    # Falls nötig, passe hier den Pfad zu deinem Chromium-Binary an:
-    # chrome_options.binary_location = "/usr/bin/chromium-browser"
-    
-    service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    return driver
 
-# Beispiel-Funktion zum Scrapen der Earnings-Daten (Platzhalterwerte!)
-def scrape_earnings_whispers(ticker):
-    driver = get_driver()
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
     url = f"https://www.earningswhispers.com/stocks/{ticker}"
     driver.get(url)
-    time.sleep(3)  # Warte, bis die Seite vollständig geladen ist
-    
-    # Hier kommt dein Scraping-Code, der die benötigten Daten extrahiert.
-    # Im Folgenden werden Platzhalterwerte zurückgegeben:
-    data = {
-        "earnings_date": "26/02/25",         # Datum im Format dd/mm/yy
-        "earnings_growth": "6300.0%",
-        "revenue_growth": "36.8%",
-        "earnings_surprise": "1540.0%",
-        "short_ratio": "2.3"
-    }
-    
-    driver.quit()
-    return data
 
-# Funktion zum Abfragen der Chromium-Version über subprocess
-def show_chromium_version():
+    wait = WebDriverWait(driver, 10)
+
+    earnings_data = {}
+
     try:
-        output = subprocess.check_output(["chromium", "--version"])
-        st.write("Chromium-Version:", output.decode().strip())
+        eps = wait.until(EC.presence_of_element_located(
+            (By.XPATH, '//div[contains(text(),"Consensus EPS Forecast")]/following-sibling::div')
+        )).text
+        earnings_data["EPS"] = eps
     except Exception as e:
-        st.write("Fehler beim Aufruf von 'chromium --version':", e)
+        earnings_data["EPS"] = f"Fehler: EPS nicht gefunden ({str(e)})"
 
-# Hauptfunktion der Streamlit-App
-def main():
-    st.title("Earnings Scraper & Chromium Version Checker")
-    
-    st.header("Earnings Scraper")
-    ticker = st.text_input("Gib den Ticker ein:")
-    if st.button("Daten abrufen"):
-        if ticker:
-            data = scrape_earnings_whispers(ticker.strip().upper())
-            # Ausgabe im gewünschten Format (ohne erklärende Titel)
-            st.write(f"{data['earnings_date']}")
-            st.write(f"EG: {data['earnings_growth']} / RG: {data['revenue_growth']}")
-            st.write(f"ES: {data['earnings_surprise']}")
-            st.write(f"SR: {data['short_ratio']}")
-        else:
-            st.write("Bitte einen Ticker eingeben.")
-    
-    st.header("Chromium Version Check")
-    if st.button("Chromium Version prüfen"):
-        show_chromium_version()
+    try:
+        revenue = wait.until(EC.presence_of_element_located(
+            (By.XPATH, '//div[contains(text(),"Consensus Revenue Forecast")]/following-sibling::div')
+        )).text
+        earnings_data["Revenue"] = revenue
+    except Exception as e:
+        earnings_data["Revenue"] = f"Fehler: Revenue nicht gefunden ({str(e)})"
+
+    try:
+        growth = wait.until(EC.presence_of_element_located(
+            (By.XPATH, '//div[contains(text(),"Expected Growth")]/following-sibling::div')
+        )).text
+        earnings_data["Growth"] = growth
+    except Exception as e:
+        earnings_data["Growth"] = f"Fehler: Growth nicht gefunden ({str(e)})"
+
+    driver.quit()
+    return earnings_data
 
 if __name__ == "__main__":
-    main()
+    ticker = input("Bitte den Ticker eingeben: ")
+    earnings = get_earnings_data(ticker.upper())
+    print(earnings)
