@@ -13,12 +13,18 @@ def get_earnings_data(url):
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    
+    # ChromeDriver explizit in der aktuellsten Version installieren
+    driver = webdriver.Chrome(
+        service=Service(
+            ChromeDriverManager(driver_version="134.0.6998.35").install()
+        ), 
+        options=options
+    )
+
     try:
         driver.get(url)
 
-        # Beispielhafte Wartezeit auf ein Element
+        # Wartezeit auf Element (Beispiel)
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".earningstable"))
         )
