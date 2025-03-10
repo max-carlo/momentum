@@ -70,3 +70,25 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+import streamlit as st
+import subprocess
+
+def show_chromium_version():
+    try:
+        output = subprocess.check_output(["chromium", "--version"])
+        st.write("Chromium-Version:", output.decode().strip())
+    except Exception as e:
+        st.write("Fehler beim Aufruf von chromium --version:", e)
+
+def main():
+    st.title("Chromium Version Check")
+    if st.button("Check Chromium"):
+        show_chromium_version()
+
+if __name__ == "__main__":
+    main()
+
