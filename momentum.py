@@ -1,3 +1,4 @@
+import streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -5,49 +6,43 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-def get_earnings_data(ticker):
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+@st.cache_data(show_spinner=True)
+def get_earnings_data(url):
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-
-    url = f"https://www.earningswhispers.com/stocks/{ticker}"
-    driver.get(url)
-
-    wait = WebDriverWait(driver, 10)
-
-    earnings_data = {}
-
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
     try:
-        eps = wait.until(EC.presence_of_element_located(
-            (By.XPATH, '//div[contains(text(),"Consensus EPS Forecast")]/following-sibling::div')
-        )).text
-        earnings_data["EPS"] = eps
+        driver.get(url)
+
+        # Beispielhafte Wartezeit auf ein Element
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".earningstable"))
+        )
+
+        earnings_table = driver.find_element(By.CSS_SELECTOR, ".earningstable")
+        earnings_html = earnings_table.get_attribute('outerHTML')
+
+        return earnings_html
+
     except Exception as e:
-        earnings_data["EPS"] = f"Fehler: EPS nicht gefunden ({str(e)})"
+        st.error(f"Fehler beim Laden: {e}")
+        return None
 
-    try:
-        revenue = wait.until(EC.presence_of_element_located(
-            (By.XPATH, '//div[contains(text(),"Consensus Revenue Forecast")]/following-sibling::div')
-        )).text
-        earnings_data["Revenue"] = revenue
-    except Exception as e:
-        earnings_data["Revenue"] = f"Fehler: Revenue nicht gefunden ({str(e)})"
+    finally:
+        driver.quit()
 
-    try:
-        growth = wait.until(EC.presence_of_element_located(
-            (By.XPATH, '//div[contains(text(),"Expected Growth")]/following-sibling::div')
-        )).text
-        earnings_data["Growth"] = growth
-    except Exception as e:
-        earnings_data["Growth"] = f"Fehler: Growth nicht gefunden ({str(e)})"
+# Streamlit App
+st.title("Earnings Data Scraper")
+url = st.text_input("Gib die URL zur Earnings-Seite ein:")
 
-    driver.quit()
-    return earnings_data
-
-if __name__ == "__main__":
-    ticker = input("Bitte den Ticker eingeben: ")
-    earnings = get_earnings_data(ticker.upper())
-    print(earnings)
+if st.button("Daten abrufen"):
+    if url:
+        data = get_earnings_data(url)
+        if data:
+            st.markdown(data, unsafe_allow_html=True)
+    else:
+        st.warning("Bitte gib eine gültige URL ein.")
