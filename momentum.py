@@ -92,3 +92,56 @@ def main():
 if __name__ == "__main__":
     main()
 
+
+
+
+import streamlit as st
+import subprocess
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.utils import ChromeType
+
+def show_chromium_version():
+    try:
+        output = subprocess.check_output(["chromium", "--version"])
+        st.write("Chromium-Version:", output.decode().strip())
+    except Exception as e:
+        st.write("Fehler beim Aufruf von chromium --version:", e)
+
+def get_driver():
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+
+    # 1) Versuch mit auto-erkennung von Chromium:
+    service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+
+    # ODER 2) Explizit mit version="120.0.6099.0" probieren, wenn der auto-Mode streikt:
+    #
+    # service = Service(ChromeDriverManager(
+    #       version="120.0.6099.0",
+    #       chrome_type=ChromeType.CHROMIUM
+    # ).install())
+
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    return driver
+
+def main():
+    st.title("Chromium / Selenium Test")
+
+    if st.button("Check Chromium-Version"):
+        show_chromium_version()
+
+    ticker = st.text_input("Ticker: ")
+    if st.button("Scrape"):
+        driver = get_driver()
+        driver.get("https://www.google.com")
+        st.write("Seiten-Titel:", driver.title)
+        driver.quit()
+
+if __name__ == "__main__":
+    main()
+
+
