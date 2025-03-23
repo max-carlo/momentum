@@ -1,44 +1,42 @@
 import streamlit as st
-from playwright.sync_api import sync_playwright
+import yfinance as yf
+import pandas as pd
 
-def get_earnings_history(ticker):
-    url = f"https://seekingalpha.com/symbol/{ticker}/earnings"
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
-        page = context.new_page()
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_selector("table[data-test-id='table']", timeout=60000)
-            rows = page.query_selector_all("table[data-test-id='table'] tbody tr")
+def get_earnings_history_yf(ticker):
+    try:
+        t = yf.Ticker(ticker)
+        df = t.quarterly_earnings.copy()
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
 
-            earnings_data = []
-            for row in rows:
-                cols = row.query_selector_all("td")
-                if len(cols) >= 6:
-                    period = cols[0].inner_text()
-                    eps = cols[1].inner_text()
-                    eps_beat_miss = cols[2].inner_text()
-                    revenue = cols[3].inner_text()
-                    yoy_growth = cols[4].inner_text()
-                    revenue_beat_miss = cols[5].inner_text()
-                    earnings_data.append(f"{period}: EPS {eps} ({eps_beat_miss}), Revenue {revenue} ({yoy_growth} YoY), Rev Surprise {revenue_beat_miss}")
+        # Wachstum zum Vorjahresquartal
+        df["Earnings YoY"] = df["Earnings"].pct_change(periods=4) * 100
+        df["Revenue YoY"] = df["Revenue"].pct_change(periods=4) * 100
 
-        except Exception as e:
-            return [f"Fehler beim Laden der Earnings-History: {e}"]
+        # Nur letzte 4 Quartale
+        df = df.iloc[-4:].copy()
 
-        browser.close()
-    return earnings_data
+        # Formatierungen
+        df_display = df.copy()
+        df_display.index = df_display.index.strftime("%Y-Q%q")  # Format wie "2023-Q4"
+        df_display["Earnings"] = df_display["Earnings"].map("{:.2f}".format)
+        df_display["Revenue"] = df_display["Revenue"].map(lambda x: f"{x/1e9:.2f}B")
+        df_display["Earnings YoY"] = df_display["Earnings YoY"].map(lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A")
+        df_display["Revenue YoY"] = df_display["Revenue YoY"].map(lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A")
+
+        df_display = df_display[["Earnings", "Earnings YoY", "Revenue", "Revenue YoY"]]
+        return df_display
+    except Exception as e:
+        return pd.DataFrame({"Fehler": [str(e)]})
 
 # Streamlit UI
-st.title("Test: Seeking Alpha Earnings History")
+st.title("Test: Earnings History (via yfinance)")
 
 with st.form(key="debug_form"):
     ticker = st.text_input("Ticker eingeben:")
     submitted = st.form_submit_button("Fetch Earnings History")
 
 if submitted and ticker:
-    history = get_earnings_history(ticker.strip().upper())
-    st.write("### Earnings History (Seeking Alpha)")
-    for entry in history:
-        st.write(entry)
+    st.write("### Earnings History (yfinance)")
+    df_history = get_earnings_history_yf(ticker.strip().upper())
+    st.dataframe(df_history, use_container_width=True)
