@@ -37,3 +37,15 @@ def scrape_zacks_earnings(ticker):
         df = pd.DataFrame()
 
     return df
+
+import streamlit as st
+
+st.title("Zacks Earnings Calendar")
+
+ticker = st.text_input("Ticker eingeben (z. B. AAPL):")
+if st.button("Daten abrufen") and ticker:
+    df = scrape_zacks_earnings(ticker.strip().upper())
+    if df.empty:
+        st.error("Keine Daten gefunden.")
+    else:
+        st.dataframe(df)
