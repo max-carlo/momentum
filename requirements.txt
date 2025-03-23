@@ -1,4 +1,4 @@
 playwright
-streamlit
-yfinance
+bs4
 pandas
+streamlit
