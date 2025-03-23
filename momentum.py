@@ -1,7 +1,3 @@
-import pandas as pd
-import streamlit as st
-from playwright.sync_api import sync_playwright
-
 def scrape_zacks_earnings(ticker):
     url = f"https://www.zacks.com/stock/research/{ticker}/earnings-calendar"
     with sync_playwright() as p:
@@ -12,10 +8,15 @@ def scrape_zacks_earnings(ticker):
             "Chrome/134.0.0.0 Safari/537.36"
         ))
         page = context.new_page()
-
+        
         try:
-            page.goto(url, wait_until="networkidle", timeout=90000)
-            page.wait_for_selector("table#earnings_announcements_earnings_table", timeout=20000)
+            # 🔄 Verwende domcontentloaded statt networkidle
+            page.goto(url, wait_until="domcontentloaded", timeout=90000)
+
+            # 🧷 Warte auf eine sichere Zelle (z. B. das Datum im ersten Row)
+            page.wait_for_selector("table#earnings_announcements_earnings_table th.sorting_1", timeout=15000)
+
+            # ✅ Tabelle extrahieren
             table_html = page.inner_html("table#earnings_announcements_earnings_table")
         except Exception as e:
             browser.close()
@@ -23,22 +24,12 @@ def scrape_zacks_earnings(ticker):
 
         browser.close()
 
+    # 🧪 Tabelle parsen
     try:
+        import pandas as pd
         df_list = pd.read_html(f"<table>{table_html}</table>")
         df = df_list[0] if df_list else pd.DataFrame()
     except Exception as e:
         return f"Fehler beim Parsen der Tabelle: {e}"
 
     return df
-
-# Streamlit UI
-st.title("Zacks Earnings Scraper")
-
-ticker = st.text_input("Ticker eingeben:")
-if st.button("Lade Zacks Earnings"):
-    result = scrape_zacks_earnings(ticker.strip().upper())
-    if isinstance(result, str):
-        st.error(result)
-    else:
-        st.write("### Earnings Calendar")
-        st.dataframe(result)
