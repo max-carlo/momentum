@@ -29,26 +29,19 @@ def scrape_finviz_news(ticker="AAPL"):
     soup = BeautifulSoup(html, "html.parser")
     news_rows = soup.select("table.fullview-news-outer tr")
 
-    news_data = []
+    news_items = []
     for row in news_rows:
-        time_cell = row.find("td", attrs={"align": "right"})
         link_cell = row.find("a", class_="tab-link-news")
         source_span = row.find("span")
 
-        if time_cell and link_cell:
-            time = time_cell.text.strip()
+        if link_cell:
             title = link_cell.text.strip()
             href = link_cell["href"]
             source = source_span.text.strip("()") if source_span else ""
+            link_markdown = f"[{title}]({href}) ({source})"
+            news_items.append(link_markdown)
 
-            news_data.append({
-                "Time": time,
-                "Title": title,
-                "Source": source,
-                "URL": href
-            })
-
-    return pd.DataFrame(news_data)
+    return news_items
 
 # Streamlit UI
 st.title("Finviz News Scraper")
@@ -58,8 +51,10 @@ with st.form("ticker_form"):
     submitted = st.form_submit_button("News abrufen")
 
 if submitted and ticker:
-    df = scrape_finviz_news(ticker.strip().upper())
-    if isinstance(df, pd.DataFrame):
-        st.dataframe(df)
+    news_list = scrape_finviz_news(ticker.strip().upper())
+    if isinstance(news_list, list):
+        st.markdown("### Neueste Artikel")
+        for item in news_list:
+            st.markdown(f"- {item}")
     else:
-        st.error(df)
+        st.error(news_list)
