@@ -1,42 +1,51 @@
-import streamlit as st
 import yfinance as yf
 import pandas as pd
+import streamlit as st
 
-def get_earnings_history_yf(ticker):
+def get_yfinance_earnings_history(ticker):
     try:
         t = yf.Ticker(ticker)
-        df = t.quarterly_earnings.copy()
-        df.index = pd.to_datetime(df.index)
-        df = df.sort_index()
+        earnings_df = t.quarterly_earnings
 
-        # Wachstum zum Vorjahresquartal
-        df["Earnings YoY"] = df["Earnings"].pct_change(periods=4) * 100
-        df["Revenue YoY"] = df["Revenue"].pct_change(periods=4) * 100
+        if earnings_df is None or earnings_df.empty:
+            return pd.DataFrame(), "Keine Earnings-Daten gefunden."
 
-        # Nur letzte 4 Quartale
-        df = df.iloc[-4:].copy()
+        earnings_df = earnings_df.copy()
+        earnings_df.reset_index(inplace=True)
+        earnings_df.columns = ['Quarter', 'EPS']
 
-        # Formatierungen
-        df_display = df.copy()
-        df_display.index = df_display.index.strftime("%Y-Q%q")  # Format wie "2023-Q4"
-        df_display["Earnings"] = df_display["Earnings"].map("{:.2f}".format)
-        df_display["Revenue"] = df_display["Revenue"].map(lambda x: f"{x/1e9:.2f}B")
-        df_display["Earnings YoY"] = df_display["Earnings YoY"].map(lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A")
-        df_display["Revenue YoY"] = df_display["Revenue YoY"].map(lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A")
+        try:
+            rev_df = t.quarterly_financials.T[['Total Revenue']]
+            rev_df.reset_index(inplace=True)
+            rev_df.columns = ['Quarter', 'Revenue']
+        except Exception:
+            rev_df = pd.DataFrame(columns=['Quarter', 'Revenue'])
 
-        df_display = df_display[["Earnings", "Earnings YoY", "Revenue", "Revenue YoY"]]
-        return df_display
+        merged_df = pd.merge(earnings_df, rev_df, on='Quarter', how='outer')
+        merged_df.sort_values('Quarter', inplace=True, ascending=False)
+        merged_df = merged_df.head(8)  # Für YoY-Vergleich
+
+        merged_df['EPS YoY'] = merged_df['EPS'].pct_change(4) * 100
+        merged_df['Revenue YoY'] = merged_df['Revenue'].pct_change(4) * 100
+
+        merged_df['EPS YoY'] = merged_df['EPS YoY'].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A")
+        merged_df['Revenue YoY'] = merged_df['Revenue YoY'].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A")
+
+        return merged_df.head(4), ""
     except Exception as e:
-        return pd.DataFrame({"Fehler": [str(e)]})
+        return pd.DataFrame(), str(e)
 
-# Streamlit UI
-st.title("Test: Earnings History (via yfinance)")
+# Streamlit App
+st.title("Hanabi Scraper – Earnings History (via yFinance)")
 
-with st.form(key="debug_form"):
+with st.form(key="yfinance_form"):
     ticker = st.text_input("Ticker eingeben:")
     submitted = st.form_submit_button("Fetch Earnings History")
 
 if submitted and ticker:
-    st.write("### Earnings History (yfinance)")
-    df_history = get_earnings_history_yf(ticker.strip().upper())
-    st.dataframe(df_history, use_container_width=True)
+    df, error = get_yfinance_earnings_history(ticker.strip().upper())
+    if error:
+        st.error(error)
+    else:
+        st.write("### Letzte 4 Quartale (inkl. YoY-Wachstum)")
+        st.dataframe(df)
