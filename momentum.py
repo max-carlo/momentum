@@ -1,35 +1,24 @@
 import streamlit as st
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import pandas as pd
 
-st.title("Ticker Scraper (Finviz + Zacks)")
-
-ticker = st.text_input("Ticker eingeben:")
-
-
-# --------- FINVIZ SCRAPER (bewährter Code) ----------
+# --- Finviz News Scraper ---
 def scrape_finviz_news(ticker="AAPL"):
     url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
-
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/134.0.0.0 Safari/537.36"
-            )
-        )
+        context = browser.new_context(user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/134.0.0.0 Safari/537.36"))
         page = context.new_page()
-
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             html = page.content()
         except Exception as e:
             browser.close()
-            return f"Fehler beim Laden der Finviz-Seite: {e}"
-
+            return f"Fehler beim Laden der Finviz-News: {e}"
         browser.close()
 
     soup = BeautifulSoup(html, "html.parser")
@@ -40,7 +29,6 @@ def scrape_finviz_news(ticker="AAPL"):
         time_cell = row.find("td", width="130")
         link_cell = row.find("a", class_="tab-link-news")
         source_span = row.find("span")
-
         if link_cell:
             time = time_cell.text.strip() if time_cell else ""
             title = link_cell.text.strip()
@@ -48,73 +36,65 @@ def scrape_finviz_news(ticker="AAPL"):
             source = source_span.text.strip("()") if source_span else ""
             item = f"**{time}** – [{title}]({href}) ({source})"
             news_items.append(item)
-
     return news_items
 
-
-# --------- ZACKS SCRAPER ----------
+# --- Zacks Earnings Scraper ---
 def scrape_zacks_earnings(ticker):
     url = f"https://www.zacks.com/stock/research/{ticker}/earnings-calendar"
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
-            page = context.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=90000)
-
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/134.0.0.0 Safari/537.36"))
+        page = context.new_page()
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_selector("table#earnings_announcements_earnings_table", timeout=10000)
             rows = page.query_selector_all("tr.odd, tr.even")
-            if not rows:
-                raise Exception("Keine .odd/.even Tabellenzeilen gefunden.")
-
             data = []
             for row in rows:
-                cells = row.query_selector_all("th, td")
-                if len(cells) >= 7:
-                    try:
-                        date = cells[0].inner_text()
-                        period = cells[1].inner_text()
-                        estimate = cells[2].inner_text()
-                        reported = cells[3].inner_text()
-                        surprise = cells[4].inner_text()
-                        surprise_percent = cells[5].inner_text()
-                        time = cells[6].inner_text()
-                        data.append({
-                            "Date": date,
-                            "Period": period,
-                            "Estimate": estimate,
-                            "Reported": reported,
-                            "Surprise": surprise,
-                            "% Surprise": surprise_percent,
-                            "Time": time
-                        })
-                    except:
-                        continue
+                cols = row.query_selector_all("th, td")
+                if len(cols) >= 7:
+                    data.append({
+                        "Date": cols[0].inner_text().strip(),
+                        "Period": cols[1].inner_text().strip(),
+                        "Estimate": cols[2].inner_text().strip(),
+                        "Reported": cols[3].inner_text().strip(),
+                        "Surprise": cols[4].inner_text().strip(),
+                        "% Surprise": cols[5].inner_text().strip(),
+                        "Time": cols[6].inner_text().strip(),
+                    })
+        except Exception as e:
             browser.close()
-            return pd.DataFrame(data)
-    except PlaywrightTimeoutError as e:
-        return f"Fehler beim Laden der Zacks-Daten: {e}"
-    except Exception as e:
-        return f"Allgemeiner Fehler bei Zacks-Daten: {e}"
+            return f"Fehler beim Laden der Zacks-Daten: {e}"
+        browser.close()
+    return pd.DataFrame(data)
 
+# --- Streamlit UI ---
+st.title("📊 Aktien-Infos: Finviz News & Zacks Earnings")
 
-# --------- BUTTONS ----------
-col1, col2 = st.columns(2)
+with st.form("ticker_form"):
+    ticker = st.text_input("Ticker eingeben (z. B. AAPL)", "")
+    col1, col2 = st.columns(2)
+    with col1:
+        submitted_news = st.form_submit_button("📰 Finviz News abrufen")
+    with col2:
+        submitted_zacks = st.form_submit_button("📅 Zacks Earnings abrufen")
 
-with col1:
-    if st.button("🔍 Finviz News laden") and ticker:
-        st.subheader("📢 Finviz News")
-        news = scrape_finviz_news(ticker.strip().upper())
-        if isinstance(news, list):
-            for item in news:
-                st.markdown(f"- {item}")
-        else:
-            st.error(news)
+if submitted_news and ticker:
+    news_list = scrape_finviz_news(ticker.strip().upper())
+    if isinstance(news_list, list):
+        st.markdown("### 📰 Finviz News")
+        for item in news_list:
+            st.markdown(f"- {item}")
+    else:
+        st.error(news_list)
 
-with col2:
-    if st.button("📊 Zacks Earnings laden") and ticker:
-        st.subheader("📈 Zacks Earnings")
-        earnings = scrape_zacks_earnings(ticker.strip().upper())
-        if isinstance(earnings, pd.DataFrame):
-            st.dataframe(earnings)
-        else:
-            st.error(earnings)
+if submitted_zacks and ticker:
+    df = scrape_zacks_earnings(ticker.strip().upper())
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        st.markdown("### 📅 Zacks Earnings Calendar")
+        st.dataframe(df)
+    else:
+        st.error(df if isinstance(df, str) else "Keine Daten gefunden.")
