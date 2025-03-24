@@ -15,27 +15,23 @@ def scrape_finviz_news(ticker):
             page = context.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-            rows = page.query_selector_all("table.fullview-news-outer tr")
-            news_data = []
-            for row in rows:
-                time_cell = row.query_selector("td:nth-child(1)")
-                title_cell = row.query_selector("td:nth-child(2) a")
-                source_span = row.query_selector("td:nth-child(2) span")
-
-                if title_cell and source_span:
-                    time = time_cell.inner_text().strip() if time_cell else ""
-                    title = title_cell.inner_text().strip()
-                    link = title_cell.get_attribute("href")
-                    source = source_span.inner_text().strip()
-                    news_data.append({
-                        "Zeit": time,
-                        "Titel": f"[{title}]({link})",
-                        "Quelle": source
-                    })
+            news_rows = page.query_selector_all("table.fullview-news-outer tr")
+            news = []
+            for row in news_rows:
+                cells = row.query_selector_all("td")
+                if len(cells) == 2:
+                    time = cells[0].inner_text().strip()
+                    link = cells[1].query_selector("a")
+                    if link:
+                        title = link.inner_text().strip()
+                        href = link.get_attribute("href")
+                        source = cells[1].query_selector("span")
+                        source_text = source.inner_text().strip("()") if source else ""
+                        news.append((time, source_text, title, href))
             browser.close()
-        return pd.DataFrame(news_data)
+            return pd.DataFrame(news, columns=["Time", "Source", "Title", "URL"])
     except Exception as e:
-        return f"Fehler beim Abrufen der Finviz News: {e}"
+        return f"Fehler beim Laden der Finviz-News: {e}"
 
 def scrape_zacks_earnings(ticker):
     url = f"https://www.zacks.com/stock/research/{ticker}/earnings-calendar"
@@ -50,47 +46,35 @@ def scrape_zacks_earnings(ticker):
             page = context.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-            rows = page.query_selector_all("table#earnings_announcements_earnings_table tr.odd, table#earnings_announcements_earnings_table tr.even")
-            earnings_data = []
-            for row in rows:
-                cols = row.query_selector_all("th, td")
-                if len(cols) >= 7:
-                    earnings_data.append({
-                        "Date": cols[0].inner_text().strip(),
-                        "Period Ending": cols[1].inner_text().strip(),
-                        "Estimate": cols[2].inner_text().strip(),
-                        "Reported": cols[3].inner_text().strip(),
-                        "Surprise": cols[4].inner_text().strip(),
-                        "% Surprise": cols[5].inner_text().strip(),
-                        "Time": cols[6].inner_text().strip(),
-                    })
+            page.wait_for_selector("table#earnings_announcements_earnings_table", timeout=10000)
+            table_html = page.inner_html("table#earnings_announcements_earnings_table")
             browser.close()
-        return pd.DataFrame(earnings_data)
+            df_list = pd.read_html(f"<table>{table_html}</table>")
+            df = df_list[0] if df_list else pd.DataFrame()
+            return df
     except Exception as e:
-        return f"Fehler beim Abrufen der Zacks Earnings: {e}"
+        return f"Fehler beim Laden der Zacks-Daten: {e}"
 
-# Streamlit UI
-st.title("📰 Finviz News & Zacks Earnings")
+st.title("News & Earnings Scraper")
 
-with st.form(key="ticker_form"):
-    ticker = st.text_input("Ticker eingeben (z.B. AAPL):")
+with st.form("ticker_form"):
+    ticker = st.text_input("Ticker eingeben:").upper().strip()
     submitted = st.form_submit_button("Daten abrufen")
 
 if submitted and ticker:
-    ticker = ticker.strip().upper()
-
     # Finviz
-    st.subheader("🔹 Finviz News")
-    finviz_data = scrape_finviz_news(ticker)
-    if isinstance(finviz_data, pd.DataFrame) and not finviz_data.empty:
-        st.dataframe(finviz_data)
+    result_news = scrape_finviz_news(ticker)
+    st.subheader("Finviz News")
+    if isinstance(result_news, pd.DataFrame) and not result_news.empty:
+        result_news["Title"] = result_news.apply(lambda row: f"[{row['Title']}]({row['URL']})", axis=1)
+        st.dataframe(result_news[["Time", "Source", "Title"]])
     else:
-        st.error(finviz_data)
+        st.error(result_news if isinstance(result_news, str) else "Keine News gefunden.")
 
     # Zacks
-    st.subheader("🔹 Zacks Earnings Calendar")
-    zacks_data = scrape_zacks_earnings(ticker)
-    if isinstance(zacks_data, pd.DataFrame) and not zacks_data.empty:
-        st.dataframe(zacks_data)
+    result_zacks = scrape_zacks_earnings(ticker)
+    st.subheader("Zacks Earnings")
+    if isinstance(result_zacks, pd.DataFrame) and not result_zacks.empty:
+        st.dataframe(result_zacks)
     else:
-        st.error(zacks_data)
+        st.error(result_zacks if isinstance(result_zacks, str) else "Keine Earnings-Daten gefunden.")
